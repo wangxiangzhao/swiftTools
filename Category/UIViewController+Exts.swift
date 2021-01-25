@@ -12,9 +12,11 @@ enum TransitionStyle {
 }
 
 private var styleKey: String = ""
+private var panKey: String = ""
+private var interactiveKey: String = ""
 
 extension UIViewController: UIViewControllerTransitioningDelegate {
-    
+    //转场样式
     private var _style: TransitionStyle {
         get {
             return  objc_getAssociatedObject(self, &styleKey) as! TransitionStyle
@@ -23,11 +25,45 @@ extension UIViewController: UIViewControllerTransitioningDelegate {
             objc_setAssociatedObject(self, &styleKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
-
-    func customPresentTransitionAnimation(style: TransitionStyle) {
+    //侧滑手势
+    private var _panGesture: UIPanGestureRecognizer? {
+        get {
+            return  objc_getAssociatedObject(self, &panKey) as? UIPanGestureRecognizer
+        }
+        set {
+            objc_setAssociatedObject(self, &panKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+    //是否开启侧滑返回
+    var _interactive: Bool {
+        get {
+            return  objc_getAssociatedObject(self, &interactiveKey) as! Bool
+        }
+        set {
+            objc_setAssociatedObject(self, &interactiveKey, newValue, .OBJC_ASSOCIATION_ASSIGN)
+            if newValue {
+                guard _panGesture == nil else {
+                    return
+                }
+                view.isUserInteractionEnabled = true
+                _panGesture = UIPanGestureRecognizer(target: self, action: #selector(pan(gesture:)))
+                view.addGestureRecognizer(_panGesture!)
+            } else {
+                guard _panGesture != nil else {
+                    return
+                }
+                if view.gestureRecognizers?.contains(_panGesture!) == true {
+                    view.removeGestureRecognizer(_panGesture!)
+                }
+            }
+        }
+    }
+    //设置自定义的转场动画类型
+    func customPresentTransitionAnimation(_ style: TransitionStyle, interactive: Bool) {
         transitioningDelegate = self
         modalPresentationStyle = .custom;
         _style = style
+        _interactive = interactive
     }
     
     public func animationController(forPresented presented: UIViewController, presenting: UIViewController, source: UIViewController) -> UIViewControllerAnimatedTransitioning? {
@@ -44,6 +80,30 @@ extension UIViewController: UIViewControllerTransitioningDelegate {
             return _DismissAnimation()
 //        default:
 //            return nil
+        }
+    }
+    
+    //MARK: 侧滑手势
+    @objc private func pan(gesture: UIPanGestureRecognizer) {
+        let view = gesture.view!
+        let translation = gesture.translation(in: view)
+        if _style == .push {
+            if view.frame.minX <= 0 && translation.x < 0 {
+                view.transform = CGAffineTransform(translationX: 0, y: 0);
+                return
+            }
+            view.transform = CGAffineTransform(translationX: translation.x, y: 0);
+            let percent = (translation.x) / view.bounds.size.width
+            if percent >= 0.5 {
+                dismiss(animated: true, completion: nil)
+            }
+            if gesture.state == .ended ||  gesture.state == .cancelled  || gesture.state == .failed {
+                if percent < 0.5 {
+                    UIView.animate(withDuration: 0.25) {
+                        view.transform = CGAffineTransform(translationX: 0, y: 0);
+                    }
+                }
+            }
         }
     }
 
